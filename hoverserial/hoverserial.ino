@@ -8,7 +8,7 @@
 #include <SoftwareSerial.h>
 SoftwareSerial oSerialHover(9,8); // eHposer Arduino Mini
 /* or for ESP32 with its nice 3 hardware serial ports
-#define oSerialBoardA Serial1
+#define oSerialHover Serial1
 #define oSerialBoardB Serial2
 */
 
