@@ -24,6 +24,7 @@
 #define DEFINES_H
 
 #include "stm32f1xx_hal.h"
+#include "config.h"
 
 #define LEFT_HALL_U_PIN GPIO_PIN_5
 #define LEFT_HALL_V_PIN GPIO_PIN_6
@@ -101,33 +102,88 @@
 
 // #define DCLINK_ADC ADC3
 // #define DCLINK_CHANNEL
+
+#if BOARD_VARIANT == 0
 #define DCLINK_PIN GPIO_PIN_2
 #define DCLINK_PORT GPIOC
+#elif BOARD_VARIANT == 1
+#define DCLINK_PIN GPIO_PIN_1
+#define DCLINK_PORT GPIOA
+#endif
+
 // #define DCLINK_PULLUP 30000
 // #define DCLINK_PULLDOWN 1000
 
 #define LED_PIN GPIO_PIN_2
 #define LED_PORT GPIOB
 
+#if BOARD_VARIANT == 0
 #define BUZZER_PIN GPIO_PIN_4
 #define BUZZER_PORT GPIOA
+#elif BOARD_VARIANT == 1
+#define BUZZER_PIN GPIO_PIN_13
+#define BUZZER_PORT GPIOC
+#endif
 
-#define SWITCH_PIN GPIO_PIN_1
-#define SWITCH_PORT GPIOA
+// UNUSED/REDUNDANT
+//#define SWITCH_PIN GPIO_PIN_1
+//#define SWITCH_PORT GPIOA
 
+#if BOARD_VARIANT == 0
 #define OFF_PIN GPIO_PIN_5
 #define OFF_PORT GPIOA
+#elif BOARD_VARIANT == 1
+#define OFF_PIN GPIO_PIN_15
+#define OFF_PORT GPIOC
+#endif
 
+#if BOARD_VARIANT == 0
 #define BUTTON_PIN GPIO_PIN_1
 #define BUTTON_PORT GPIOA
+#elif BOARD_VARIANT == 1
+#define BUTTON_PIN GPIO_PIN_9
+#define BUTTON_PORT GPIOB
+#endif
 
+#if BOARD_VARIANT == 0
 #define CHARGER_PIN GPIO_PIN_12
 #define CHARGER_PORT GPIOA
+#elif BOARD_VARIANT == 1
+#define CHARGER_PIN GPIO_PIN_11
+#define CHARGER_PORT GPIOA
+#endif
 
-#define BUTTON1_RIGHT_PIN GPIO_PIN_10
-#define BUTTON1_RIGHT_PORT GPIOB
-#define BUTTON2_RIGHT_PIN GPIO_PIN_11
-#define BUTTON2_RIGHT_PORT GPIOB
+#if defined(CONTROL_PPM_LEFT)
+#define PPM_PIN             GPIO_PIN_3
+#define PPM_PORT            GPIOA
+#elif defined(CONTROL_PPM_RIGHT)
+#define PPM_PIN             GPIO_PIN_11
+#define PPM_PORT            GPIOB
+#endif
+
+#if defined(CONTROL_PWM_LEFT)
+#define PWM_PIN_CH1         GPIO_PIN_2
+#define PWM_PORT_CH1        GPIOA
+#define PWM_PIN_CH2         GPIO_PIN_3
+#define PWM_PORT_CH2        GPIOA
+#elif defined(CONTROL_PWM_RIGHT)
+#define PWM_PIN_CH1         GPIO_PIN_10
+#define PWM_PORT_CH1        GPIOB
+#define PWM_PIN_CH2         GPIO_PIN_11
+#define PWM_PORT_CH2        GPIOB
+#endif
+
+#if defined(SUPPORT_BUTTONS_LEFT)
+#define BUTTON1_PIN         GPIO_PIN_2
+#define BUTTON1_PORT        GPIOA
+#define BUTTON2_PIN         GPIO_PIN_3
+#define BUTTON2_PORT        GPIOA
+#elif defined(SUPPORT_BUTTONS_RIGHT)
+#define BUTTON1_PIN         GPIO_PIN_10
+#define BUTTON1_PORT        GPIOB
+#define BUTTON2_PIN         GPIO_PIN_11
+#define BUTTON2_PORT        GPIOB
+#endif
 
 #define DELAY_TIM_FREQUENCY_US 1000000
 
@@ -152,6 +208,13 @@
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN3(a, b, c) MIN(a, MIN(b, c))
 #define MAX3(a, b, c) MAX(a, MAX(b, c))
+#define ARRAY_LEN(x) (uint32_t)(sizeof(x) / sizeof(*(x)))
+#define MAP(x, in_min, in_max, out_min, out_max) (((((x) - (in_min)) * ((out_max) - (out_min))) / ((in_max) - (in_min))) + (out_min))
+
+#if defined(PRINTF_FLOAT_SUPPORT) && (defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)) && defined(__GNUC__)
+    asm(".global _printf_float");     // this is the magic trick for printf to support float. Warning: It will increase code considerably! Better to avoid!
+#endif
+
 
 typedef struct {
   uint16_t dcr; 
@@ -166,11 +229,16 @@ typedef struct {
   uint16_t l_rx2;
 } adc_buf_t;
 
+typedef enum {
+  NUNCHUK_CONNECTING,
+  NUNCHUK_DISCONNECTED,
+  NUNCHUK_RECONNECTING,
+  NUNCHUK_CONNECTED
+} nunchuk_state;
+
 // Define I2C, Nunchuk, PPM, PWM functions
 void I2C_Init(void);
-void Nunchuk_Init(void);
-void Nunchuk_Read(void);
-uint8_t Nunchuk_Ping(void);
+nunchuk_state Nunchuk_Read(void);
 void PPM_Init(void);
 void PPM_ISR_Callback(void);
 void PWM_Init(void);
@@ -178,14 +246,20 @@ void PWM_ISR_CH1_Callback(void);
 void PWM_ISR_CH2_Callback(void);
 
 // Sideboard definitions
-#define LED1_SET     				(0x01)
-#define LED2_SET     				(0x02)
-#define LED3_SET     				(0x04)
-#define LED4_SET     				(0x08)
-#define LED5_SET     				(0x10)
-#define SENSOR1_SET    			(0x01)
-#define SENSOR2_SET    			(0x02)
-#define SENSOR_MPU    			(0x04)
+#define LED1_SET            (0x01)
+#define LED2_SET            (0x02)
+#define LED3_SET            (0x04)
+#define LED4_SET            (0x08)
+#define LED5_SET            (0x10)
+#define SENSOR1_SET         (0x01)
+#define SENSOR2_SET         (0x02)
+#define SENSOR_MPU          (0x04)
 
-#endif
+// RC iBUS switch definitions. Flysky FS-i6S has [SWA, SWB, SWC, SWD] = [2, 3, 3, 2] positions switch
+#define SWA_SET             (0x0100)   //  0000 0001 0000 0000
+#define SWB_SET             (0x0600)   //  0000 0110 0000 0000
+#define SWC_SET             (0x1800)   //  0001 1000 0000 0000
+#define SWD_SET             (0x2000)   //  0010 0000 0000 0000
+
+#endif // DEFINES_H
 
