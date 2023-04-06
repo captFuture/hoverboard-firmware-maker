@@ -187,8 +187,8 @@ static uint16_t rate = RATE; // Adjustable rate to support multiple drive modes 
 #ifdef VARIANT_UARTCAR // ROBO
   int16_t cmd2Goal;	// 10* goal speed for VARIANT_UARTCAR
   int32_t iFieldWeakMax = 0;
-  #define INPUTMAX 9900  // +-1000 do cause vibrations in my 350+ Watt motor :-(
-  #define INPUTMIN -9900
+  #define INPUTMAX 9500  // +-1000 do cause vibrations in my 350+ Watt motor :-(
+  #define INPUTMIN -9500
 #endif
 
 #ifdef SERIAL_ROBO
@@ -365,23 +365,44 @@ int main(void) {
         //Feedback.cmdLed	= (uint16_t)input2[inIdx].cmd;   // cmd2 gets overwritten
         
         long iSpeed;
-        if (abs(rtY_Left.n_mot) > abs(rtY_Right.n_mot))		// int16_T = rtY_Right.n_mot
-        {
-          #ifdef INVERT_L_DIRECTION
-            iSpeed = -rtY_Left.n_mot;
-          #else
-            iSpeed = rtY_Left.n_mot;
-          #endif
-        } 
-        else
-        {
+      	float fCurrent;
+     	#ifndef MOTOR_LEFT_ENA
+	      fCurrent = (float)(curR_DC)/-A2BIT_CONV;
           #ifdef INVERT_R_DIRECTION
-            iSpeed = rtY_Right.n_mot;
+          	iSpeed = rtY_Right.n_mot;
           #else
-            iSpeed = -rtY_Right.n_mot;
+          	iSpeed = -rtY_Right.n_mot;
           #endif
-        } 
-        float fScale2mm_s = WHEEL_SIZE_INCHES * 1.32994089;  // mm/s = (WHEEL_SIZE_INCHES * 25.4 * 3.142) * (rpm / 60)
+      	#else
+          #ifndef MOTOR_RIGHT_ENA
+      		fCurrent = (float)(curL_DC)/-A2BIT_CONV;
+            #ifdef INVERT_L_DIRECTION
+              iSpeed = -rtY_Left.n_mot;
+            #else
+              iSpeed = rtY_Left.n_mot;
+      		#endif
+          #else
+			fCurrent = (float)(curL_DC+curR_DC)/(-2.0*A2BIT_CONV);      
+            if (abs(rtY_Left.n_mot) > abs(rtY_Right.n_mot))		// int16_T = rtY_Right.n_mot
+            {
+              #ifdef INVERT_L_DIRECTION
+                iSpeed = -rtY_Left.n_mot;
+              #else
+                iSpeed = rtY_Left.n_mot;
+              #endif
+            } 
+            else
+            {
+              #ifdef INVERT_R_DIRECTION
+                iSpeed = rtY_Right.n_mot;
+              #else
+                iSpeed = -rtY_Right.n_mot;
+              #endif
+            } 
+      	  #endif
+      	#endif
+
+      	float fScale2mm_s = WHEEL_SIZE_INCHES * 1.32994089;  // mm/s = (WHEEL_SIZE_INCHES * 25.4 * 3.142) * (rpm / 60)
       	//float fScale2mm_s = WHEEL_SIZE_INCHES * 1.08; 	// robo
       	iSpeed *= fScale2mm_s;
 
@@ -392,7 +413,6 @@ int main(void) {
       
         //printf("iSpeed:%ld iSpeed_Goal:%ld",iSpeed,iSpeed_Goal);
       
-      	float fCurrent = (float)(curL_DC+curR_DC)/(-2.0*A2BIT_CONV);
       
         if (	(abs(iSpeed_Goal) < 56)	&& (abs(cmd2Goal) < 560)	)	// iSpeed_Goal = 56 = 0.2 km/h
             speed = cmd2Goal = 0;
@@ -419,7 +439,7 @@ int main(void) {
       
       	int16_t iInputMax = INPUTMAX;
         #ifdef PREVENT_DOWNHILL_VIBRATIONS
-          if ( fCurrent < -0.5) 	// prevent downhill virbrations: https://github.com/EFeru/hoverboard-firmware-hack-FOC/issues/69 
+          if ( fCurrent < 1.0) 	// prevent downhill virbrations: https://github.com/EFeru/hoverboard-firmware-hack-FOC/issues/69 
           {
             iInputMax = PREVENT_DOWNHILL_VIBRATIONS;
             // no iInputMin so no prevention of backward driving downhill.
@@ -603,7 +623,7 @@ int main(void) {
         }
       #endif
       transpotter_counter++;
-    #endif
+    #endif	//#ifdef VARIANT_TRANSPOTTER
 
     // ####### SIDEBOARDS HANDLING #######
     #if defined(SIDEBOARD_SERIAL_USART2)
@@ -764,7 +784,8 @@ int main(void) {
       enable2 = inactivity_timeout_counter <= (ENABLE_TIMEOUT * 1000) / (DELAY_IN_MAIN_LOOP + 1);	//YOU
       if (!enable2)
       {
-        speedFixdt = 0;	// clear speed when motos disabled.
+        speedRateFixdt = speedFixdt = 0;	// clear speed when motos disabled.
+        pwml = pwmr = 0;
       }
 	#endif
 

@@ -159,7 +159,7 @@
 
 // Field Weakening / Phase Advance
 #define FIELD_WEAK_ENA  1               // [-] Field Weakening / Phase Advance enable flag: 0 = Disabled (default), 1 = Enabled
-#define FIELD_WEAK_MAX  5               // [A] Maximum Field Weakening D axis current (only for FOC). Higher current results in higher maximum speed. Up to 10A has been tested using 10" wheels.
+#define FIELD_WEAK_MAX  3               // [A] Maximum Field Weakening D axis current (only for FOC). Higher current results in higher maximum speed. Up to 10A has been tested using 10" wheels.
 #define PHASE_ADV_MAX   25              // [deg] Maximum Phase Advance angle (only for SIN). Higher angle results in higher maximum speed.
 #define FIELD_WEAK_HI   1000            // (1000, 1500] Input target High threshold for reaching maximum Field Weakening / Phase Advance. Do NOT set this higher than 1500.
 #define FIELD_WEAK_LO   750             // ( 500, 1000] Input target Low threshold for starting Field Weakening / Phase Advance. Do NOT set this higher than 1000.
@@ -662,7 +662,7 @@
   #define PRI_INPUT2             2, -1000, 0, 1000, 0     // TYPE, MIN, MID, MAX, DEADBAND. See INPUT FORMAT section
   #define FLASH_WRITE_KEY      0x1012  // Flash memory writing key. Change this key to ignore the input calibrations from the flash memory and use the ones in config.h
 
-  #define PREVENT_DOWNHILL_VIBRATIONS 9800		// 9800 = max pwm of 980 inistead of 9900 set by INPUTMAX in main.c lines 189ff
+  #define PREVENT_DOWNHILL_VIBRATIONS 9200		// 9800 = max pwm of 980 inistead of 9900 set by INPUTMAX in main.c lines 189ff
 
   #define SPEED_COEFFICIENT   16384     //  1.0f
   #define STEER_COEFFICIENT   0         //  0.0f
