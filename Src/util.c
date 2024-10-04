@@ -856,7 +856,7 @@ void readInputRaw(void) {
     }
     #endif
 
-    #if defined(CONTROL_NUNCHUK) || defined(SUPPORT_NUNCHUK)
+    #if defined(CONTROL_) || defined(SUPPORT_NUNCHUK)
     if (Nunchuk_Read() == NUNCHUK_CONNECTED) {
       if (inIdx == CONTROL_NUNCHUK) {
         input1[inIdx].raw = (nunchuk_data[0] - 127) * 8; // X axis 0-255
