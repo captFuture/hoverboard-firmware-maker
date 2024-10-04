@@ -1,32 +1,81 @@
 #include <Bluepad32.h>
-//#include <M5Stack.h>
 
-#define RX_PIN 16
-#define TX_PIN 17
+struct Config {
+  char cartname[64] = "MakerCart";
+  char ssid[64] = "TarantlVR";
+  char passwd[64] = "somepassword";
+  int speedl_max = 100;
+  int speedl_min = -100;
+  int speedr_max = 100;
+  int speedr_min = -100;
+  unsigned int accel_min = 200;
+  unsigned int decel_min = 200;
+  int boost_max = 100;
+};
 
-int speedFW = 50;
-int speedRW = -50;
-float ma = speedFW * 0.01;
+Config config;
+
+const char* ssid = config.ssid;
+const char* password = config.passwd;
+
+#define TaskStackSize   5120
+#define PIN_SDA 21
+#define PIN_SCL 22
+
+static unsigned int controller_type;
+
+#define HOVER_SERIAL_BAUD   115200      // [-] Baud rate for HoverSerial (used to communicate with the hoverboard)
+#define SERIAL_BAUD         115200      // [-] Baud rate for built-in Serial (used for the Serial Monitor)
+#define START_FRAME         0xABCD     	// [-] Start frme definition for reliable serial communication
+#define TIME_SEND           100         // [ms] Sending time interval
+
+#define DEBUG_RX                        // [-] Debug received data. Prints all bytes to serial (comment-out to disable)
+HardwareSerial &HoverSerial = Serial2;
+
+// Global variables
+uint8_t idx = 0;                        // Index for new data pointer
+uint16_t bufStartFrame;                 // Buffer Start Frame
+byte *p;                                // Pointer declaration for the new received data
+byte incomingByte;
+byte incomingBytePrev;
+boolean motorOn = false;
+boolean triggerstate = false;
+boolean switchState = false;
+boolean useNunchuk = true;
+unsigned long timeNow = 0;
+
+/* Telemetry */
+int16_t driveSpeed = 0;
+//int16_t sentSpeed = 0;
+int16_t speedR = 0;
+int16_t speedL = 0;
+int16_t batVoltage = 0;
+int16_t boardTemp = 0;
+
+boolean triggerReleased = true;
+int16_t configNum = 0;
+
+int16_t leftRightCalibration = 0;
+int16_t forwardReverseCalibration = 0;
+int16_t thresholdMovement = 100;
+int16_t forwardReverseValueR = 0;
+int16_t forwardReverseInputR = 0;
+int16_t forwardReverseValueL = 0;
+int16_t forwardReverseInputL = 0;
+int16_t OLDleftRightValue = 0;
+int16_t OLDforwardReverseValue = 0;
+unsigned int accel = config.accel_min; // Acceleration time [ms]
+unsigned int decel = config.accel_min; // Acceleration time [ms]
+int16_t safetyCool = 10;
+
+int16_t myDrive = 0;
+int16_t oldmyDrive = 0;
+
+#include "hoverserial.h"
+#define HoverSerial Serial2
+SerialFeedback oHoverFeedback;
 
 int requested_state;
-
-HardwareSerial odrive_serial(2);
-#include <ODriveArduino.h>
-// Printing with stream operator
-template<class T> inline Print& operator<<(Print& obj, T arg) {
-  obj.print(arg);
-  return obj;
-}
-template<> inline Print& operator<<(Print& obj, float arg) {
-  obj.print(arg, 4);
-  return obj;
-}
-
-// ODrive object
-ODriveArduino odrive(odrive_serial);
-
-
-
 ControllerPtr myControllers[BP32_MAX_GAMEPADS];
 
 // This callback gets called any time a new gamepad is connected.
@@ -62,8 +111,8 @@ void onDisconnectedController(ControllerPtr ctl) {
     }
   }
 
-  odrive.SetVelocity(0, 0);
-  odrive.SetVelocity(1, 0);
+  //odrive.SetVelocity(0, 0);
+  //odrive.SetVelocity(1, 0);
 
   if (!foundController) {
     Serial.println("CALLBACK: Controller disconnected, but not found in myControllers");
@@ -91,15 +140,21 @@ void dumpGamepad(ControllerPtr ctl) {
     ctl->r1(),  // bitmask of pressed "misc" buttons
     ctl->r2()  // bitmask of pressed "misc" buttons
   );
-  int JoyAxisY = ctl->axisY();
-  int JoyAxisRY = ctl->axisRY();
-  int mapJoyAxisY;
-  int mapJoyAxisRY;
 
-  mapJoyAxisY = map(JoyAxisY, -512, 512, speedFW, speedRW);
-  mapJoyAxisRY = map(JoyAxisRY, -512, 512, speedFW, speedRW);
 
-  Serial.print("l: ");
+
+  //forwardReverseInputR = ctl->axisY();
+  //forwardReverseInputL = ctl->axisRY();
+  forwardReverseInputR = ctl->brake();
+  forwardReverseInputL = ctl->throttle();
+
+  //forwardReverseValueL = map(forwardReverseInputL, -512, 512, config.speedl_min, config.speedl_max);
+  forwardReverseValueL = map(forwardReverseInputL, -512, 512, config.speedl_min-(config.boost_max*configNum), config.speedl_max+(config.boost_max*configNum));
+
+  //forwardReverseValueR = map(forwardReverseInputR, -512, 512, config.speedr_min, config.speedr_max);
+  forwardReverseValueR = map(forwardReverseInputR, -512, 512, config.speedr_min-(config.boost_max*configNum), config.speedr_max+(config.boost_max*configNum));
+
+  /*Serial.print("l: ");
   Serial.print(JoyAxisY);
   Serial.print(" | r: ");
   Serial.print(JoyAxisRY);
@@ -108,57 +163,36 @@ void dumpGamepad(ControllerPtr ctl) {
   Serial.print(mapJoyAxisY);
   Serial.print(" | rm: ");
   Serial.print(mapJoyAxisRY);
-  Serial.println();
+  Serial.println();*/
 
-  float lmf = mapJoyAxisY * 0.01;
-  float rmf = mapJoyAxisRY * 0.01;
-  Serial.print("lmf: ");
-  Serial.print(lmf);
-  Serial.print(" | rmf: ");
-  Serial.print(rmf);
-  Serial.println();
 
-  if (lmf > 0.1 && lmf < -0, 1) { odrive.SetVelocity(0, lmf); } 
-  if (rmf > 0.1 && rmf < -0, 1) { odrive.SetVelocity(1, -rmf); }
 }
 
 void processGamepad(ControllerPtr ctl) {
-  // There are different ways to query whether a button is pressed.
-  // By query each button individually:
-  //  a(), b(), x(), y(), l1(), etc...
-
   if (ctl->x()) {
-    speedFW = 600;
-    speedRW = -600;
+    motorOn = !motorOn;
+    delay(200);
   }
   if (ctl->a()) {
-    speedFW = 100;
-    speedRW = -100;
+    configNum = configNum+1;
+    if(configNum > 4){
+      configNum = 0;
+    }
+    delay(200);     
   }
   if (ctl->b()) {
-    speedFW = 200;
-    speedRW = -200;
+
   }
   if (ctl->y()) {
-    speedFW = 400;
-    speedRW = -400;
+
   }
   if (ctl->l1()) {
-    Serial.printf("enabling Motors");
-    for (int axis = 0; axis < 2; ++axis) {
-      requested_state = ODriveArduino::AXIS_STATE_CLOSED_LOOP_CONTROL;
-      odrive.run_state(axis, requested_state, false);
-    }
+    Serial.printf("l1");
   }
   if (ctl->r1()) {
-    Serial.printf("disabling Motors");
-    for (int axis = 0; axis < 2; ++axis) {
-      requested_state = ODriveArduino::AXIS_STATE_IDLE;
-      odrive.run_state(axis, requested_state, false);
-    }
+    Serial.printf("r1");
   }
-  // Another way to query controller data is by getting the buttons() function.
-  // See how the different "dump*" functions dump the Controller info.
+
   dumpGamepad(ctl);
 }
 
@@ -174,113 +208,58 @@ void processControllers() {
   }
 }
 
-void testMotors() {
-  Serial.println("Executing test move");
-
-  Serial.println("Ramping up");
-  for (float ph = 0.0f; ph < ma; ph += 0.01f) {
-    odrive.SetVelocity(0, ph);
-    odrive.SetVelocity(1, -ph);
-    Serial.print(" ");
-    Serial.print(ph);
-    delay(10);
-  }
-  delay(1000);
-  Serial.println();
-  Serial.println("Ramping down");
-  for (float ph = ma; ph > 0.0f; ph -= 0.01f) {
-    odrive.SetVelocity(0, ph);
-    odrive.SetVelocity(1, -ph);
-    Serial.print(" ");
-    Serial.print(ph);
-    delay(10);
-  }
-
-  //M5.Lcd.clearDisplay();
-  //M5.Lcd.setCursor(10, 10);
-  //M5.Lcd.printf("DONE");
-  Serial.println("DONE");
-}
-
-// Arduino setup function. Runs in CPU 1
 void setup() {
-  //M5.begin();
-  // ODrive uses 115200 baud
-  odrive_serial.begin(115200, SERIAL_8N1, RX_PIN, TX_PIN);
-  Serial.begin(115200);
+  Serial.begin(SERIAL_BAUD);
+  SetupHoverArduino(HoverSerial,HOVER_SERIAL_BAUD);
 
   Serial.printf("Firmware: %s\n", BP32.firmwareVersion());
   const uint8_t* addr = BP32.localBdAddress();
   Serial.printf("BD Addr: %2X:%2X:%2X:%2X:%2X:%2X\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-
   // Setup the Bluepad32 callbacks
   BP32.setup(&onConnectedController, &onDisconnectedController);
-
-  //BP32.forgetBluetoothKeys();
-
+  
+  BP32.forgetBluetoothKeys();
+  
   BP32.enableVirtualDevice(false);
-
-  Serial.println("ODriveArduino");
-  Serial.println("Setting parameters...");
-
-  // In this example we set the same parameters to both motors.
-  // You can of course set them different if you want.
-  // See the documentation or play around in odrivetool to see the available parameters
-  for (int axis = 0; axis < 2; ++axis) {
-    odrive_serial << "w axis" << axis << ".controller.config.vel_limit " << 50.0f << '\n';
-    odrive_serial << "w axis" << axis << ".motor.config.current_lim " << 11.0f << '\n';
-  }
-  for (int axis = 0; axis < 2; ++axis) {
-    requested_state = ODriveArduino::AXIS_STATE_IDLE;
-    odrive.run_state(axis, requested_state, false);
-  }
-
-  Serial.println("Ready!");
-  //Serial.println("Send the character '0' or '1' to calibrate respective motor (you must do this before you can command movement)");
-  Serial.println("Send the character 's' to exectue test move");
+  Serial.println("Setup Done");
 }
 
-// Arduino loop function. Runs in CPU 1.
+unsigned long iTimeSend = 0;
+
 void loop() {
-  //M5.update();
   bool dataUpdated = BP32.update();
   if (dataUpdated) {
     processControllers();
   }
 
-  //     vTaskDelay(1);
-  /*
-  if (M5.BtnA.pressedFor(1000)) {
-    M5.Lcd.clearDisplay();
-    M5.Lcd.setCursor(10, 10);
-    M5.Lcd.printf("enabling Motors");
-    for (int axis = 0; axis < 2; ++axis) {
-      requested_state = ODriveArduino::AXIS_STATE_CLOSED_LOOP_CONTROL;
-      odrive.run_state(axis, requested_state, false);
-    }
+  if (Receive(HoverSerial,oHoverFeedback)) 
+  {
+    HoverLog(oHoverFeedback);
   }
-  if (M5.BtnB.wasReleased()) {
-    M5.Lcd.clearDisplay();
-    M5.Lcd.setCursor(10, 10);
-    M5.Lcd.printf("testing Motors");
-    testMotors();
-  }
-  if (M5.BtnC.pressedFor(1000)) {
-    M5.Lcd.clearDisplay();
-    M5.Lcd.setCursor(10, 10);
-    M5.Lcd.printf("disabling Motors");
-    for (int axis = 0; axis < 2; ++axis) {
-      requested_state = ODriveArduino::AXIS_STATE_IDLE;
-      odrive.run_state(axis, requested_state, false);
-    }
-  }
-*/
+  if (millis() > TIME_SEND + iTimeSend ){
+    iTimeSend = millis();
 
-  if (Serial.available()) {
-    char c = Serial.read();
-    // Sinusoidal test move
-    if (c == 's') {
-      testMotors();
+    if(motorOn == true){
+      int16_t leftwheel = forwardReverseValueL;
+      int16_t rightwheel = forwardReverseValueR;
+
+      /*if(leftRightInput < 0){
+        leftwheel= myDrive ;
+        rightwheel= myDrive + abs(leftRightValue);
+      }else if(leftRightInput > 0){
+        leftwheel= myDrive + abs(leftRightValue);
+        rightwheel= myDrive;
+      }else{
+        leftwheel= myDrive ;
+        rightwheel= myDrive;
+      }*/
+
+      Send(HoverSerial, leftwheel, rightwheel );
+      //Send(HoverSerial, leftwheel, rightwheel );
+      //Serial.print("Sending: "); Serial.print(myDrive); Serial.print(" "); Serial.print(myDrive); Serial.println(" "); 
+    }else{
+      myDrive = 0;
+      Send(HoverSerial, 0, 0);
     }
   }
 }
