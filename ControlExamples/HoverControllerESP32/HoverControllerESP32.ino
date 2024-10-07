@@ -4,10 +4,10 @@ struct Config {
   char cartname[64] = "MakerCart";
   char ssid[64] = "TarantlVR";
   char passwd[64] = "somepassword";
-  int speedl_max = 100;
-  int speedl_min = -100;
-  int speedr_max = 100;
-  int speedr_min = -100;
+  int speed_max = 100;
+  int speed_min = -100;
+  int steer_max = 100;
+  int steer_min = -100;
   unsigned int accel_min = 200;
   unsigned int decel_min = 200;
   int boost_max = 100;
@@ -41,8 +41,9 @@ byte incomingBytePrev;
 boolean motorOn = false;
 boolean triggerstate = false;
 boolean switchState = false;
-boolean useNunchuk = true;
 unsigned long timeNow = 0;
+boolean switchMotors = true;
+boolean switchDirections = true;
 
 /* Telemetry */
 int16_t driveSpeed = 0;
@@ -136,23 +137,43 @@ void dumpGamepad(ControllerPtr ctl) {
     ctl->throttle(),    // (0 - 1023): throttle (AKA gas) button
     ctl->miscButtons(),  // bitmask of pressed "misc" buttons
     ctl->l1(),  // bitmask of pressed "misc" buttons
-    ctl->l2(),  // bitmask of pressed "misc" buttons
+    ctl->l2(),  // bitmask of pressed "misc" buttons, 
     ctl->r1(),  // bitmask of pressed "misc" buttons
     ctl->r2()  // bitmask of pressed "misc" buttons
   );
 
 
 
-  //forwardReverseInputR = ctl->axisY();
-  //forwardReverseInputL = ctl->axisRY();
-  forwardReverseInputR = ctl->brake();
-  forwardReverseInputL = ctl->throttle();
+  int16_t steerInput = ctl->axisX();
+  int16_t steerValue = map(steerInput, 511, -512, config.steer_min-(config.boost_max*configNum), config.steer_max+(config.boost_max*configNum));
 
-  //forwardReverseValueL = map(forwardReverseInputL, -512, 512, config.speedl_min, config.speedl_max);
+  int16_t forwardInput = ctl->throttle();
+  int16_t backwardInput = ctl->brake();
+
+  int16_t forwardValue = map(forwardInput, 0, 1024, 0, config.speed_max+(config.boost_max*configNum));
+  int16_t backwardValue = map(backwardInput, 0, 1024, 0, config.speed_min-(config.boost_max*configNum));
+
+  int16_t driveValue = backwardValue + forwardValue;
+  if(steerValue < 0){
+    forwardReverseValueL = driveValue;
+    forwardReverseValueR = driveValue + abs(steerValue);
+  }else if(steerValue > 0){
+    forwardReverseValueL = driveValue + abs(steerValue);
+    forwardReverseValueR = driveValue;
+  }else{
+
+  }
+
+
+/*
+if(switchDirections){
+  forwardReverseValueL = map(forwardReverseInputL, 512, -512, config.speedl_min-(config.boost_max*configNum), config.speedl_max+(config.boost_max*configNum));
+  forwardReverseValueR = map(forwardReverseInputR, 512, -512, config.speedr_min-(config.boost_max*configNum), config.speedr_max+(config.boost_max*configNum));
+}else{
   forwardReverseValueL = map(forwardReverseInputL, -512, 512, config.speedl_min-(config.boost_max*configNum), config.speedl_max+(config.boost_max*configNum));
-
-  //forwardReverseValueR = map(forwardReverseInputR, -512, 512, config.speedr_min, config.speedr_max);
   forwardReverseValueR = map(forwardReverseInputR, -512, 512, config.speedr_min-(config.boost_max*configNum), config.speedr_max+(config.boost_max*configNum));
+}*/
+
 
   /*Serial.print("l: ");
   Serial.print(JoyAxisY);
@@ -165,18 +186,18 @@ void dumpGamepad(ControllerPtr ctl) {
   Serial.print(mapJoyAxisRY);
   Serial.println();*/
 
-
 }
 
 void processGamepad(ControllerPtr ctl) {
   if (ctl->x()) {
     motorOn = !motorOn;
-    delay(200);
+    delay(1000);
   }
   if (ctl->a()) {
     configNum = configNum+1;
     if(configNum > 4){
       configNum = 0;
+       delay(1000);
     }
     delay(200);     
   }
@@ -187,10 +208,14 @@ void processGamepad(ControllerPtr ctl) {
 
   }
   if (ctl->l1()) {
-    Serial.printf("l1");
+    Serial.printf("change motors");
+    switchMotors = !switchMotors;
+    delay(200);
   }
   if (ctl->r1()) {
-    Serial.printf("r1");
+    Serial.printf("reverse morors");
+    switchDirections = !switchDirections;
+    delay(200);
   }
 
   dumpGamepad(ctl);
@@ -254,7 +279,12 @@ void loop() {
         rightwheel= myDrive;
       }*/
 
+    if(switchMotors == true){
+      Send(HoverSerial, rightwheel, leftwheel );
+    }else{
       Send(HoverSerial, leftwheel, rightwheel );
+    }
+
       //Send(HoverSerial, leftwheel, rightwheel );
       //Serial.print("Sending: "); Serial.print(myDrive); Serial.print(" "); Serial.print(myDrive); Serial.println(" "); 
     }else{

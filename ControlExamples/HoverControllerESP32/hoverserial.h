@@ -2,7 +2,6 @@
 
 //#define DEBUG_RX      // for debugging the serial receive data
 #define DEBUG_HOVER   // will serial.print the feedback struct
-
 #define START_FRAME         0xABCD       // [-] Start frme definition for reliable serial communication
 
 typedef struct{
