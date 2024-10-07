@@ -29,7 +29,9 @@ static unsigned int controller_type;
 #define START_FRAME         0xABCD     	// [-] Start frme definition for reliable serial communication
 #define TIME_SEND           100         // [ms] Sending time interval
 
-#define DEBUG_RX                        // [-] Debug received data. Prints all bytes to serial (comment-out to disable)
+//#define DEBUG_RX                        // [-] Debug received data. Prints all bytes to serial (comment-out to disable)
+//#define DEBUG_HOVER
+
 HardwareSerial &HoverSerial = Serial2;
 
 // Global variables
@@ -44,6 +46,7 @@ boolean switchState = false;
 unsigned long timeNow = 0;
 boolean switchMotors = true;
 boolean switchDirections = true;
+const int buttonPin = 39;
 
 /* Telemetry */
 int16_t driveSpeed = 0;
@@ -112,9 +115,6 @@ void onDisconnectedController(ControllerPtr ctl) {
     }
   }
 
-  //odrive.SetVelocity(0, 0);
-  //odrive.SetVelocity(1, 0);
-
   if (!foundController) {
     Serial.println("CALLBACK: Controller disconnected, but not found in myControllers");
   }
@@ -125,7 +125,7 @@ void onDisconnectedController(ControllerPtr ctl) {
 void dumpGamepad(ControllerPtr ctl) {
   Serial.printf(
     "idx=%d, dpad: 0x%02x, buttons: 0x%04x, axis L: %4d, %4d, axis R: %4d, %4d, brake: %4d, throttle: %4d, "
-    "misc: 0x%02x, sl: 0x%02x, tl: 0x%02x, sr: 0x%02x, tr: 0x%02x\n",
+    "misc: 0x%02x, sl: 0x%02x, tl: 0x%02x, sr: 0x%02x, tr: 0x%02x ",
     ctl->index(),       // Controller Index
     ctl->dpad(),        // D-pad
     ctl->buttons(),     // bitmask of pressed buttons
@@ -139,10 +139,15 @@ void dumpGamepad(ControllerPtr ctl) {
     ctl->l1(),  // bitmask of pressed "misc" buttons
     ctl->l2(),  // bitmask of pressed "misc" buttons, 
     ctl->r1(),  // bitmask of pressed "misc" buttons
-    ctl->r2()  // bitmask of pressed "misc" buttons
+    ctl->r2(),  // bitmask of pressed "misc" buttons
+    ctl->thumbL(),  // bitmask of pressed "misc" buttons
+    ctl->thumbR()   // bitmask of pressed "misc" buttons
   );
 
-
+Serial.print(" mo: "); Serial.print(motorOn); Serial.print(" ");
+Serial.print(" sm: "); Serial.print(switchMotors); Serial.print(" ");
+Serial.print(" sd: "); Serial.print(switchDirections); Serial.print(" ");
+Serial.println();
 
   int16_t steerInput = ctl->axisX();
   int16_t steerValue = map(steerInput, 511, -512, config.steer_min-(config.boost_max*configNum), config.steer_max+(config.boost_max*configNum));
@@ -155,49 +160,30 @@ void dumpGamepad(ControllerPtr ctl) {
 
   int16_t driveValue = backwardValue + forwardValue;
   if(steerValue < 0){
-    forwardReverseValueL = driveValue;
-    forwardReverseValueR = driveValue + abs(steerValue);
+    forwardReverseValueL = driveValue - abs(steerValue)/2;
+    forwardReverseValueR = driveValue + abs(steerValue)/2;
   }else if(steerValue > 0){
-    forwardReverseValueL = driveValue + abs(steerValue);
-    forwardReverseValueR = driveValue;
+    forwardReverseValueL = driveValue + abs(steerValue)/2;
+    forwardReverseValueR = driveValue - abs(steerValue)/2;
   }else{
-
+    forwardReverseValueL = driveValue;
+    forwardReverseValueR = driveValue;
   }
 
-
-/*
-if(switchDirections){
-  forwardReverseValueL = map(forwardReverseInputL, 512, -512, config.speedl_min-(config.boost_max*configNum), config.speedl_max+(config.boost_max*configNum));
-  forwardReverseValueR = map(forwardReverseInputR, 512, -512, config.speedr_min-(config.boost_max*configNum), config.speedr_max+(config.boost_max*configNum));
-}else{
-  forwardReverseValueL = map(forwardReverseInputL, -512, 512, config.speedl_min-(config.boost_max*configNum), config.speedl_max+(config.boost_max*configNum));
-  forwardReverseValueR = map(forwardReverseInputR, -512, 512, config.speedr_min-(config.boost_max*configNum), config.speedr_max+(config.boost_max*configNum));
-}*/
-
-
-  /*Serial.print("l: ");
-  Serial.print(JoyAxisY);
-  Serial.print(" | r: ");
-  Serial.print(JoyAxisRY);
-  Serial.println("");
-  Serial.print("lm: ");
-  Serial.print(mapJoyAxisY);
-  Serial.print(" | rm: ");
-  Serial.print(mapJoyAxisRY);
-  Serial.println();*/
 
 }
 
 void processGamepad(ControllerPtr ctl) {
   if (ctl->x()) {
+    Serial.printf("motors on");
     motorOn = !motorOn;
-    delay(1000);
+    delay(200);
   }
   if (ctl->a()) {
     configNum = configNum+1;
     if(configNum > 4){
       configNum = 0;
-       delay(1000);
+       delay(200);
     }
     delay(200);     
   }
@@ -207,13 +193,13 @@ void processGamepad(ControllerPtr ctl) {
   if (ctl->y()) {
 
   }
-  if (ctl->l1()) {
+  if (ctl->thumbL()) {
     Serial.printf("change motors");
     switchMotors = !switchMotors;
     delay(200);
   }
-  if (ctl->r1()) {
-    Serial.printf("reverse morors");
+  if (ctl->thumbR()) {
+    Serial.printf("reverse motors");
     switchDirections = !switchDirections;
     delay(200);
   }
@@ -240,11 +226,17 @@ void setup() {
   Serial.printf("Firmware: %s\n", BP32.firmwareVersion());
   const uint8_t* addr = BP32.localBdAddress();
   Serial.printf("BD Addr: %2X:%2X:%2X:%2X:%2X:%2X\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-  // Setup the Bluepad32 callbacks
   BP32.setup(&onConnectedController, &onDisconnectedController);
   
-  BP32.forgetBluetoothKeys();
   
+  pinMode(buttonPin, INPUT);
+  if (digitalRead(buttonPin) == LOW) {
+    Serial.println("Forgetting Bluetooth keys - new pairing");
+    BP32.forgetBluetoothKeys();
+  }else{
+    Serial.println("Bluetooth keys remembered - no pairing");
+  }
+
   BP32.enableVirtualDevice(false);
   Serial.println("Setup Done");
 }
@@ -261,34 +253,21 @@ void loop() {
   {
     HoverLog(oHoverFeedback);
   }
+
   if (millis() > TIME_SEND + iTimeSend ){
     iTimeSend = millis();
 
-    if(motorOn == true){
+    if(motorOn){
       int16_t leftwheel = forwardReverseValueL;
       int16_t rightwheel = forwardReverseValueR;
 
-      /*if(leftRightInput < 0){
-        leftwheel= myDrive ;
-        rightwheel= myDrive + abs(leftRightValue);
-      }else if(leftRightInput > 0){
-        leftwheel= myDrive + abs(leftRightValue);
-        rightwheel= myDrive;
-      }else{
-        leftwheel= myDrive ;
-        rightwheel= myDrive;
-      }*/
-
-    if(switchMotors == true){
+    if(switchMotors){
       Send(HoverSerial, rightwheel, leftwheel );
     }else{
       Send(HoverSerial, leftwheel, rightwheel );
     }
 
-      //Send(HoverSerial, leftwheel, rightwheel );
-      //Serial.print("Sending: "); Serial.print(myDrive); Serial.print(" "); Serial.print(myDrive); Serial.println(" "); 
     }else{
-      myDrive = 0;
       Send(HoverSerial, 0, 0);
     }
   }

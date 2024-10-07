@@ -1,7 +1,7 @@
 //#define FEEDBACK_ROBO   // adds current and odometer to the feedback struct
 
-//#define DEBUG_RX      // for debugging the serial receive data
-#define DEBUG_HOVER   // will serial.print the feedback struct
+//#define DEBUG_RX    // for debugging the serial receive data
+//#define DEBUG_HOVER   // will serial.print the feedback struct
 #define START_FRAME         0xABCD       // [-] Start frme definition for reliable serial communication
 
 typedef struct{
@@ -88,8 +88,15 @@ void HoverLog(SerialFeedback& Feedback)
     //Serial.print("\tcrc="); Serial.println(Feedback.checksum,HEX);
   #endif
   float speedFactor = 2.0 * 3.14 * 0.08255 * 60 /1000;
-  float tempDriveSpeed = (float)Feedback.speedL_meas * speedFactor;
-  driveSpeed = abs((int)tempDriveSpeed);
+  float tempDriveSpeedL = (float)Feedback.speedL_meas * speedFactor;
+  float tempDriveSpeedR = (float)Feedback.speedR_meas * speedFactor;
+  if(abs((int)tempDriveSpeedL) > 0){
+    driveSpeed = 2*abs((int)tempDriveSpeedR)*abs((int)tempDriveSpeedL)/(abs((int)tempDriveSpeedR)+abs((int)tempDriveSpeedL));
+  } else {
+    driveSpeed = 0;
+  }
+
+  //driveSpeed = 2*abs((int)tempDriveSpeedR)*abs((int)tempDriveSpeedL)/(abs((int)tempDriveSpeedR)+abs((int)tempDriveSpeedL));
 }
 
 
