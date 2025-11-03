@@ -262,9 +262,17 @@ void loop() {
       int16_t rightwheel = forwardReverseValueR;
 
     if(switchMotors){
-      Send(HoverSerial, rightwheel, leftwheel );
+      if(switchDirections){
+        Send(HoverSerial, rightwheel, leftwheel );
+      }else{
+        Send(HoverSerial, rightwheel*-1, leftwheel*-1 );
+      }
     }else{
-      Send(HoverSerial, leftwheel, rightwheel );
+      if(switchDirections){
+        Send(HoverSerial, leftwheel, rightwheel );
+      }else{
+        Send(HoverSerial, leftwheel*-1, rightwheel*-1 );
+      }
     }
 
     }else{
